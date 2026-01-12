@@ -3,16 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HụiSmart Pro - Quản lý tài chính</title>
+    <title>HụiSmart v3.0 - Quản lý & Nhắc nợ Zalo</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        body { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
-        .hui-card { transition: all 0.2s; border: 1px solid #e2e8f0; }
-        .hui-card:hover { transform: translateY(-2px); shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+        body { background-color: #f1f5f9; font-family: 'Inter', sans-serif; }
+        .card-shadow { box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05); }
+        .animate-pop { animation: pop 0.3s ease-out; }
+        @keyframes pop { 0% { transform: scale(0.95); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
     </style>
 </head>
 <body>
@@ -23,23 +24,24 @@
 
         function HuiApp() {
             const [huiGroups, setHuiGroups] = useState(() => {
-                const saved = localStorage.getItem('hui_pro_data');
+                const saved = localStorage.getItem('hui_v3_data');
                 return saved ? JSON.parse(saved) : [];
             });
-            const [view, setView] = useState('list'); // 'list' hoặc 'detail'
+            const [view, setView] = useState('list');
             const [selectedHui, setSelectedHui] = useState(null);
             const [showModal, setShowModal] = useState(false);
             const [newHui, setNewHui] = useState({ name: '', amount: 5000000, members: 10, commission: 100000 });
 
             useEffect(() => {
-                localStorage.setItem('hui_pro_data', JSON.stringify(huiGroups));
+                localStorage.setItem('hui_v3_data', JSON.stringify(huiGroups));
             }, [huiGroups]);
 
             const addHuiGroup = () => {
+                if (!newHui.name) return alert("Vui lòng nhập tên dây hụi");
                 const group = {
                     id: Date.now(),
                     ...newHui,
-                    periods: [], // Lưu lịch sử các kỳ đã khui
+                    periods: [],
                     createdAt: new Date().toLocaleDateString('vi-VN')
                 };
                 setHuiGroups([...huiGroups, group]);
@@ -47,6 +49,7 @@
             };
 
             const handleKhuiHui = (bidAmount) => {
+                if (!bidAmount || bidAmount < 0) return alert("Vui lòng nhập tiền lãi đấu");
                 const updatedGroups = huiGroups.map(g => {
                     if (g.id === selectedHui.id) {
                         const newPeriod = {
@@ -55,149 +58,137 @@
                             bid: Number(bidAmount),
                             date: new Date().toLocaleDateString('vi-VN')
                         };
-                        const updatedHui = { ...g, periods: [...g.periods, newPeriod] };
+                        const updatedHui = { ...g, periods: [newPeriod, ...g.periods] }; // Kỳ mới nhất lên đầu
                         setSelectedHui(updatedHui);
                         return updatedHui;
                     }
                     return g;
                 });
                 setHuiGroups(updatedGroups);
+                document.getElementById('bidInput').value = '';
             };
 
-            // Tính toán tài chính cho kỳ hiện tại
-            const calculateCurrentPeriod = (group) => {
-                const totalPeriods = group.members;
-                const completed = group.periods.length;
-                if (completed >= totalPeriods) return null;
+            const copyZaloMsg = (p, group) => {
+                const livingCount = group.members - p.periodNum;
+                const deadCount = p.periodNum - 1;
+                const songAmount = group.amount - p.bid;
+                const chetAmount = group.amount;
+                const received = (livingCount * songAmount) + (deadCount * chetAmount) - group.commission;
 
-                const livingHuiCount = totalPeriods - completed - 1; // Những người chưa hốt (trừ người đang hốt)
-                const deadHuiCount = completed; // Những người đã hốt rồi
+                const msg = `🔔 THÔNG BÁO HỘI: ${group.name.toUpperCase()}
+📅 Kỳ khui: Kỳ ${p.periodNum} (${p.date})
+-------------------------
+💰 Mức lãi đấu: ${p.bid.toLocaleString()}đ
+✅ Hụi sống (người chưa hốt): ${songAmount.toLocaleString()}đ
+💀 Hụi chết (người đã hốt): ${chetAmount.toLocaleString()}đ
+-------------------------
+👉 Tổng tiền người hốt nhận: ${received.toLocaleString()}đ
+(Đã trừ tiền cò: ${group.commission.toLocaleString()}đ)`;
                 
-                return { livingHuiCount, deadHuiCount };
+                navigator.clipboard.writeText(msg);
+                alert("Đã copy tin nhắn báo hụi! Hãy dán vào Zalo.");
             };
 
             return (
-                <div className="max-w-5xl mx-auto p-4 md:p-6">
-                    {/* Navigation */}
-                    <nav className="flex items-center gap-2 mb-6 text-sm">
-                        <button onClick={() => setView('list')} className="text-blue-600 hover:underline">Trang chủ</button>
-                        {view === 'detail' && <span className="text-gray-400"> / Chi tiết dây hụi</span>}
-                    </nav>
+                <div className="max-w-4xl mx-auto p-4 md:p-6 mb-10">
+                    <header className="flex justify-between items-center mb-8">
+                        <div onClick={() => setView('list')} className="cursor-pointer">
+                            <h1 className="text-3xl font-black text-blue-600 flex items-center gap-2">
+                                <i className="fas fa-wallet text-2xl"></i> HụiSmart
+                            </h1>
+                        </div>
+                        {view === 'list' && (
+                            <button onClick={() => setShowModal(true)} className="bg-blue-600 text-white p-3 px-5 rounded-2xl font-bold shadow-lg shadow-blue-200 active:scale-95 transition">
+                                + Tạo Dây Mới
+                            </button>
+                        )}
+                    </header>
 
                     {view === 'list' ? (
-                        <>
-                            <div className="flex justify-between items-end mb-8">
-                                <div>
-                                    <h1 className="text-4xl font-black text-blue-900 tracking-tight">HụiSmart <span className="text-blue-500 text-lg">v2.0</span></h1>
-                                    <p className="text-slate-500 font-medium">Hệ thống quản lý hụi minh bạch</p>
+                        <div className="grid gap-4">
+                            {huiGroups.length === 0 && <div className="text-center p-20 bg-white rounded-3xl border-2 border-dashed text-gray-400">Chưa có dữ liệu dây hụi.</div>}
+                            {huiGroups.map(group => (
+                                <div key={group.id} className="bg-white p-5 rounded-3xl card-shadow flex justify-between items-center border border-white">
+                                    <div>
+                                        <h3 className="font-bold text-slate-800 text-lg">{group.name}</h3>
+                                        <p className="text-sm text-slate-500">{group.amount.toLocaleString()}đ • {group.members} phần • Kỳ {group.periods.length}/{group.members}</p>
+                                    </div>
+                                    <button onClick={() => { setSelectedHui(group); setView('detail'); }} className="bg-slate-100 p-3 px-5 rounded-xl font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-600 transition">
+                                        Chi tiết
+                                    </button>
                                 </div>
-                                <button onClick={() => setShowModal(true)} className="bg-blue-600 text-white px-5 py-3 rounded-2xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all">
-                                    <i className="fas fa-plus mr-2"></i>Tạo Dây Mới
-                                </button>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {huiGroups.map(group => (
-                                    <div key={group.id} className="hui-card bg-white p-6 rounded-2xl shadow-sm">
-                                        <div className="flex justify-between items-start mb-4">
-                                            <h3 className="text-xl font-bold text-slate-800">{group.name}</h3>
-                                            <span className="bg-blue-50 text-blue-600 text-xs font-bold px-2 py-1 rounded">
-                                                Kỳ {group.periods.length}/{group.members}
-                                            </span>
-                                        </div>
-                                        <div className="space-y-2 mb-6 text-slate-600">
-                                            <div className="flex justify-between"><span>Mức hụi:</span> <span className="font-bold text-slate-900">{group.amount.toLocaleString()}đ</span></div>
-                                            <div className="flex justify-between"><span>Số phần:</span> <span className="font-medium">{group.members} người</span></div>
-                                        </div>
-                                        <button 
-                                            onClick={() => { setSelectedHui(group); setView('detail'); }}
-                                            className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition"
-                                        >
-                                            Chi tiết & Khui hụi
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </>
+                            ))}
+                        </div>
                     ) : (
-                        <div className="animate-in fade-in duration-500">
-                            <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
-                                <h2 className="text-3xl font-bold text-slate-800 mb-6">{selectedHui.name}</h2>
-                                
-                                {/* Khui hụi Form */}
-                                {selectedHui.periods.length < selectedHui.members ? (
-                                    <div className="bg-blue-50 p-6 rounded-2xl mb-8 border border-blue-100">
-                                        <h4 className="font-bold text-blue-800 mb-4 tracking-wide uppercase text-sm">Khui hụi kỳ tới (Kỳ {selectedHui.periods.length + 1})</h4>
-                                        <div className="flex gap-4">
-                                            <input 
-                                                id="bidInput"
-                                                type="number" 
-                                                placeholder="Nhập tiền thảo (lãi đấu)..." 
-                                                className="flex-1 px-4 py-3 rounded-xl border-none ring-1 ring-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
-                                            />
-                                            <button 
-                                                onClick={() => {
-                                                    const val = document.getElementById('bidInput').value;
-                                                    if(val) handleKhuiHui(val);
-                                                }}
-                                                className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:shadow-lg transition"
-                                            >
-                                                Xác nhận hốt
-                                            </button>
+                        <div className="animate-pop">
+                            <button onClick={() => setView('list')} className="mb-4 text-slate-500 font-medium"><i className="fas fa-arrow-left mr-2"></i> Quay lại</button>
+                            
+                            <div className="bg-white p-6 rounded-3xl card-shadow mb-6">
+                                <h2 className="text-2xl font-bold text-slate-800 mb-2">{selectedHui.name}</h2>
+                                <div className="flex gap-4 text-sm mb-6 text-slate-500">
+                                    <span>Giá trị: <b>{selectedHui.amount.toLocaleString()}đ</b></span>
+                                    <span>Tổng: <b>{selectedHui.members} phần</b></span>
+                                </div>
+
+                                {selectedHui.periods.length < selectedHui.members && (
+                                    <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100 mb-8">
+                                        <label className="block text-sm font-bold text-blue-800 mb-2 uppercase">Khui kỳ thứ {selectedHui.periods.length + 1}</label>
+                                        <div className="flex gap-3">
+                                            <input id="bidInput" type="number" placeholder="Nhập mức lãi đấu..." className="flex-1 p-3 rounded-xl border-none outline-none focus:ring-2 focus:ring-blue-500" />
+                                            <button onClick={() => handleKhuiHui(document.getElementById('bidInput').value)} className="bg-blue-600 text-white px-6 rounded-xl font-bold">Xác nhận</button>
                                         </div>
-                                    </div>
-                                ) : (
-                                    <div className="bg-green-100 text-green-700 p-4 rounded-xl mb-8 font-bold text-center italic">
-                                        Dây hụi này đã kết thúc mãn mãn!
                                     </div>
                                 )}
 
-                                {/* History Table */}
-                                <h4 className="font-bold mb-4 text-slate-700">Lịch sử các kỳ</h4>
-                                <div className="overflow-hidden rounded-xl border border-slate-100">
-                                    <table className="w-full text-left border-collapse">
-                                        <thead className="bg-slate-50">
-                                            <tr>
-                                                <th className="p-4 text-slate-500 font-semibold">Kỳ</th>
-                                                <th className="p-4 text-slate-500 font-semibold">Tiền thảo (Lãi)</th>
-                                                <th className="p-4 text-slate-500 font-semibold text-right">Người hốt nhận được</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {selectedHui.periods.map((p, index) => {
-                                                const living = selectedHui.members - p.periodNum;
-                                                const dead = p.periodNum - 1;
-                                                const received = (living * (selectedHui.amount - p.bid)) + (dead * selectedHui.amount) - selectedHui.commission;
-                                                return (
-                                                    <tr key={p.id} className="border-t hover:bg-slate-50">
-                                                        <td className="p-4 font-bold">Kỳ {p.periodNum}</td>
-                                                        <td className="p-4 text-red-500">-{p.bid.toLocaleString()}đ</td>
-                                                        <td className="p-4 font-bold text-green-600 text-right">{received.toLocaleString()}đ</td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
+                                <h3 className="font-bold text-slate-700 mb-4">Lịch sử & Bảng kê</h3>
+                                <div className="space-y-4">
+                                    {selectedHui.periods.map(p => {
+                                        const livingCount = selectedHui.members - p.periodNum;
+                                        const deadCount = p.periodNum - 1;
+                                        const songAmt = selectedHui.amount - p.bid;
+                                        const received = (livingCount * songAmt) + (deadCount * selectedHui.amount) - selectedHui.commission;
+                                        
+                                        return (
+                                            <div key={p.id} className="border border-slate-100 rounded-2xl overflow-hidden bg-slate-50">
+                                                <div className="p-4 flex justify-between items-center bg-white">
+                                                    <span className="font-bold">Kỳ {p.periodNum} <span className="text-slate-400 font-normal ml-2">{p.date}</span></span>
+                                                    <button onClick={() => copyZaloMsg(p, selectedHui)} className="text-green-600 font-bold text-sm bg-green-50 p-2 px-4 rounded-lg"><i className="fab fa-whatsapp"></i> Gửi Zalo</button>
+                                                </div>
+                                                <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-3">
+                                                    <div className="bg-white p-3 rounded-xl border border-slate-100">
+                                                        <span className="text-[10px] text-slate-400 block font-bold uppercase">Hụi sống ({livingCount})</span>
+                                                        <span className="font-bold text-blue-600">{songAmt.toLocaleString()}đ</span>
+                                                    </div>
+                                                    <div className="bg-white p-3 rounded-xl border border-slate-100">
+                                                        <span className="text-[10px] text-slate-400 block font-bold uppercase">Hụi chết ({deadCount})</span>
+                                                        <span className="font-bold text-red-600">{selectedHui.amount.toLocaleString()}đ</span>
+                                                    </div>
+                                                    <div className="bg-white p-3 rounded-xl border border-slate-100 col-span-2 md:col-span-1">
+                                                        <span className="text-[10px] text-slate-400 block font-bold uppercase">Người hốt nhận</span>
+                                                        <span className="font-bold text-green-600 text-lg">{received.toLocaleString()}đ</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {/* Modal */}
+                    {/* Modal Tạo Dây */}
                     {showModal && (
-                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                            <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl scale-in-center">
-                                <h2 className="text-2xl font-black mb-6 text-slate-800">Thiết lập dây mới</h2>
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                            <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-pop">
+                                <h2 className="text-xl font-bold mb-6 text-slate-800">Thông số dây hụi</h2>
                                 <div className="space-y-4">
-                                    <input type="text" placeholder="Tên dây (Ví dụ: Hụi 5 triệu)" className="w-full p-4 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 border-none" onChange={(e)=>setNewHui({...newHui, name: e.target.value})}/>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <input type="number" placeholder="Số tiền" className="w-full p-4 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 border-none" value={newHui.amount} onChange={(e)=>setNewHui({...newHui, amount: Number(e.target.value)})}/>
-                                        <input type="number" placeholder="Số phần" className="w-full p-4 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 border-none" value={newHui.members} onChange={(e)=>setNewHui({...newHui, members: Number(e.target.value)})}/>
-                                    </div>
-                                    <input type="number" placeholder="Tiền cò chủ hụi" className="w-full p-4 bg-slate-50 rounded-xl outline-none border-none ring-1 ring-slate-100" value={newHui.commission} onChange={(e)=>setNewHui({...newHui, commission: Number(e.target.value)})}/>
-                                    <div className="flex gap-4 mt-6">
-                                        <button onClick={()=>setShowModal(false)} className="flex-1 py-4 text-slate-500 font-bold">Đóng</button>
-                                        <button onClick={addHuiGroup} className="flex-1 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-200">Tạo Ngay</button>
+                                    <input type="text" placeholder="Tên dây (Ví dụ: Hụi 5tr Cô Ba)" className="w-full p-4 bg-slate-100 rounded-2xl outline-none" onChange={(e)=>setNewHui({...newHui, name: e.target.value})}/>
+                                    <input type="number" placeholder="Số tiền đóng" className="w-full p-4 bg-slate-100 rounded-2xl outline-none" value={newHui.amount} onChange={(e)=>setNewHui({...newHui, amount: Number(e.target.value)})}/>
+                                    <input type="number" placeholder="Số phần" className="w-full p-4 bg-slate-100 rounded-2xl outline-none" value={newHui.members} onChange={(e)=>setNewHui({...newHui, members: Number(e.target.value)})}/>
+                                    <input type="number" placeholder="Tiền cò chủ hụi" className="w-full p-4 bg-slate-100 rounded-2xl outline-none" value={newHui.commission} onChange={(e)=>setNewHui({...newHui, commission: Number(e.target.value)})}/>
+                                    <div className="flex gap-2 pt-4">
+                                        <button onClick={()=>setShowModal(false)} className="flex-1 py-4 font-bold text-slate-400">Hủy</button>
+                                        <button onClick={addHuiGroup} className="flex-1 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-200">Bắt đầu</button>
                                     </div>
                                 </div>
                             </div>
